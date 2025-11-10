@@ -10,10 +10,16 @@ class PracticeDB(Base):
     __tablename__ = "practices"
     practice_id = Column(CHAR(36), primary_key=True)
     user_id = Column(CHAR(36), index=True, nullable=False) # Referencia lógica, no clave foránea
-    letra_plantilla = Column(SQLAlchemyEnum(LetraPermitida), nullable=False)
+    letra_plantilla = Column(
+        SQLAlchemyEnum(LetraPermitida, native_enum=False, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False
+    )
     url_imagen = Column(String(255), nullable=False)
     fecha_carga = Column(DateTime, default=datetime.datetime.utcnow)
-    estado_analisis = Column(SQLAlchemyEnum(EstadoAnalisis), default=EstadoAnalisis.PENDIENTE)
+    estado_analisis = Column(
+        SQLAlchemyEnum(EstadoAnalisis, native_enum=False, values_callable=lambda obj: [e.value for e in obj]),
+        default=EstadoAnalisis.PENDIENTE
+    )
     
     analisis = relationship("AnalisisDB", back_populates="practice", uselist=False, cascade="all, delete-orphan")
 
