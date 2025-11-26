@@ -10,3 +10,5 @@ class Analisis(BaseModel):
     puntuacion_consistencia: conint(ge=0, le=100)
     fortalezas: str
     areas_mejora: str
+    
+    

@@ -1,5 +1,7 @@
 # src/config.py
+from typing import Optional
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     # Database
@@ -14,12 +16,17 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
+    # External Services
+    analysis_service_base_url: Optional[str] = None
+    analysis_service_timeout: int = 30
+
     def get_db_url(self) -> str:
         """Genera la URL de conexión para SQLAlchemy."""
         # Cambiamos 'mysqlclient' por 'pymysql'
         return f"mysql+pymysql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
     
     class Config:
-        env_file = ".env" 
+        env_file = ".env"
+
 
 settings = Settings()

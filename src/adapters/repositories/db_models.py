@@ -5,11 +5,14 @@ from src.domain.value_objects.enums import EstadoAnalisis, LetraPermitida
 from src.adapters.repositories.base import Base
 import datetime
 
-
 class PracticeDB(Base):
     __tablename__ = "practices"
+    
+    # Configuración para distinguir mayúsculas/minúsculas ('a' vs 'A')
+    __table_args__ = {'mysql_collate': 'utf8mb4_bin'}
+
     practice_id = Column(CHAR(36), primary_key=True)
-    user_id = Column(CHAR(36), index=True, nullable=False) # Referencia lógica, no clave foránea
+    user_id = Column(CHAR(36), index=True, nullable=False)
     letra_plantilla = Column(SQLAlchemyEnum(LetraPermitida), nullable=False)
     url_imagen = Column(String(255), nullable=False)
     fecha_carga = Column(DateTime, default=datetime.datetime.utcnow)
@@ -19,8 +22,17 @@ class PracticeDB(Base):
 
 class AnalisisDB(Base):
     __tablename__ = "analyses"
+
+    # --- CORRECCIÓN IMPRESCINDIBLE ---
+    # La tabla hija TAMBIÉN debe ser 'utf8mb4_bin' para poder conectarse con la madre.
+    __table_args__ = {'mysql_collate': 'utf8mb4_bin'}
+    # ---------------------------------
+
     analisis_id = Column(CHAR(36), primary_key=True)
+    
+    # Ahora esta columna coincidirá perfectamente con practices.practice_id
     practice_id = Column(CHAR(36), ForeignKey("practices.practice_id"), nullable=False)
+    
     puntuacion_general = Column(Integer)
     puntuacion_proporcion = Column(Integer)
     puntuacion_inclinacion = Column(Integer)
