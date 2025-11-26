@@ -1,6 +1,7 @@
 # src/config.py
 from typing import Optional
 from pydantic_settings import BaseSettings
+from urllib.parse import quote_plus
 
 
 class Settings(BaseSettings):
@@ -22,8 +23,10 @@ class Settings(BaseSettings):
 
     def get_db_url(self) -> str:
         """Genera la URL de conexión para SQLAlchemy."""
-        # Cambiamos 'mysqlclient' por 'pymysql'
-        return f"mysql+pymysql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        # Codificamos usuario y contraseña para manejar caracteres especiales
+        encoded_user = quote_plus(self.db_user)
+        encoded_password = quote_plus(self.db_password)
+        return f"mysql+pymysql://{encoded_user}:{encoded_password}@{self.db_host}:{self.db_port}/{self.db_name}"
     
     class Config:
         env_file = ".env"

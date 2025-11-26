@@ -1,2 +1,27 @@
+<<<<<<< HEAD
 .env
 /venv
+=======
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.log
+*.sqlite3
+.DS_Store
+.idea/
+.vscode/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+node_modules/
+env/
+venv/
+.env
+.env.*
+
+>>>>>>> 5f4b543eaf0d401ba70980e1c0a3dba2d98f3b20

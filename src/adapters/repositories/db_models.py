@@ -12,11 +12,22 @@ class PracticeDB(Base):
     __table_args__ = {'mysql_collate': 'utf8mb4_bin'}
 
     practice_id = Column(CHAR(36), primary_key=True)
+<<<<<<< HEAD
     user_id = Column(CHAR(36), index=True, nullable=False)
     letra_plantilla = Column(SQLAlchemyEnum(LetraPermitida), nullable=False)
+=======
+    user_id = Column(CHAR(36), index=True, nullable=False) # Referencia lógica, no clave foránea
+    letra_plantilla = Column(
+        SQLAlchemyEnum(LetraPermitida, native_enum=False, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False
+    )
+>>>>>>> 5f4b543eaf0d401ba70980e1c0a3dba2d98f3b20
     url_imagen = Column(String(255), nullable=False)
     fecha_carga = Column(DateTime, default=datetime.datetime.utcnow)
-    estado_analisis = Column(SQLAlchemyEnum(EstadoAnalisis), default=EstadoAnalisis.PENDIENTE)
+    estado_analisis = Column(
+        SQLAlchemyEnum(EstadoAnalisis, native_enum=False, values_callable=lambda obj: [e.value for e in obj]),
+        default=EstadoAnalisis.PENDIENTE
+    )
     
     analisis = relationship("AnalisisDB", back_populates="practice", uselist=False, cascade="all, delete-orphan")
 

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 fastapi
 uvicorn[standard]
 sqlalchemy
@@ -10,3 +11,12 @@ passlib[bcrypt]
 httpx
 python-multipart
 cryptography
+=======
+fastapi == 0.121.1
+uvicorn[standard] == 0.38.0
+SQLAlchemy == 2.0.44
+PyMySQL == 1.1.2
+pydantic-settings == 2.11.0
+python-jose[cryptography] == 3.5.0
+python-multipart == 0.0.20
+>>>>>>> 5f4b543eaf0d401ba70980e1c0a3dba2d98f3b20
