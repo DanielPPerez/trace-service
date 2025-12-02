@@ -1,5 +1,7 @@
 # src/adapters/api/main.py
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 # Importamos el router que contiene todos nuestros endpoints de prácticas
 from src.adapters.api import practice_routes
@@ -44,6 +46,45 @@ app = FastAPI(
 # todos los endpoints que definimos en el archivo practice_routes.py.
 # Todos los endpoints de ese archivo ahora estarán disponibles bajo la aplicación principal.
 app.include_router(practice_routes.router)
+
+
+# --- Exception Handlers ---
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Maneja errores de validación y proporciona mensajes más claros."""
+    errors = exc.errors()
+    error_details = []
+    
+    for error in errors:
+        field_path = " -> ".join(str(loc) for loc in error.get("loc", []))
+        error_type = error.get("type", "unknown")
+        error_msg = error.get("msg", "Validation error")
+        
+        # Mensajes más descriptivos para errores comunes
+        if error_type == "missing":
+            if "imagen" in str(field_path).lower():
+                error_msg = "El campo 'imagen' es requerido. Asegúrate de enviar un archivo en el campo 'imagen' usando multipart/form-data. En Thunder Client, ve a Body → Form, marca el checkbox del campo 'imagen' y selecciona un archivo."
+            elif "letra" in str(field_path).lower():
+                error_msg = "El campo 'letra' es requerido. Debe ser un solo carácter (a-z, A-Z, 0-9)."
+        
+        error_details.append({
+            "campo": field_path,
+            "tipo": error_type,
+            "mensaje": error_msg,
+            "detalle_completo": error
+        })
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Error de validación en la petición",
+            "errores": error_details,
+            "sugerencias": {
+                "formato_correcto": "Debes enviar la petición como multipart/form-data con dos campos: 'letra' (texto) e 'imagen' (archivo)",
+                "ejemplo_thunder_client": "Body → Form → Campo 1: letra=A, Campo 2: imagen=[seleccionar archivo]"
+            }
+        }
+    )
 
 
 # --- Endpoints de Nivel de Aplicación ---

@@ -1,5 +1,5 @@
 # src/adapters/api/practice_routes.py
-from fastapi import APIRouter, Depends, UploadFile, Form, File, HTTPException, status
+from fastapi import APIRouter, Depends, UploadFile, Form, File, HTTPException, status, Request
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -76,51 +76,102 @@ def _build_analysis_request_dto(payload: Dict[str, Any]) -> UpdateAnalysisReques
 
 # --- Endpoints ---
 
-@router.post("/", response_model=PracticeResultDTO, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PracticeResultDTO, status_code=status.HTTP_201_CREATED)
 async def create_practice(
     user_id: uuid.UUID = Depends(get_current_user_id),
-    letra: LetraPermitida = Form(...),
+    letra: str = Form(...),
     imagen: UploadFile = File(...),
     repo: MySQLPracticeRepository = Depends(get_practice_repository)
 ):
     """Sube una nueva práctica y coordina el análisis con el microservicio externo."""
+    
+    # Validar que la letra sea un valor válido del enum
+    try:
+        letra_enum = LetraPermitida(letra)
+    except ValueError:
+        valores_validos = [e.value for e in LetraPermitida]
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Valor de 'letra' inválido: '{letra}'. Valores permitidos: {valores_validos}"
+        )
+    
+    # Validar que el archivo de imagen esté presente
+    if not imagen or not imagen.filename:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El campo 'imagen' es requerido y debe contener un archivo. Asegúrate de enviar el archivo en el campo 'imagen' del formulario multipart/form-data."
+        )
+    
+    print(f"[TraceService] Recibida petición POST /practices - letra: {letra_enum.value}, usuario: {user_id}, archivo: {imagen.filename}")
+    
     # Leer los bytes para reenviarlos al servicio de análisis
-    image_bytes = await imagen.read()
-    imagen.file.seek(0)  # Permite reusar el archivo en otras capas si es necesario
+    try:
+        image_bytes = await imagen.read()
+        imagen.file.seek(0)  # Permite reusar el archivo en otras capas si es necesario
+    except Exception as e:
+        print(f"[TraceService] ERROR al leer el archivo: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error al leer el archivo de imagen: {str(e)}"
+        )
+    
+    if not image_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La imagen recibida está vacía. Por favor, envía un archivo de imagen válido."
+        )
+    
+    print(f"[TraceService] Imagen recibida correctamente - tamaño: {len(image_bytes)} bytes, tipo: {imagen.content_type}")
 
     use_case = CreatePracticeUseCase(repo)
-    creation_response = use_case.execute(user_id=user_id, letra=letra, imagen=imagen)
+    creation_response = use_case.execute(user_id=user_id, letra=letra_enum, imagen=imagen)
     practice_id = uuid.UUID(creation_response.practice_id)
+    print(f"[TraceService] Práctica creada con ID: {practice_id}")
 
     # Intentar conectarse al servicio de análisis
-    try:
-        analysis_client = AnalysisServiceClient(
-            base_url=settings.analysis_service_base_url,
-            timeout=settings.analysis_service_timeout,
-        )
-    except AnalysisServiceError as exc:
-        print(f"[AnalysisService] configuración incompleta: {exc}")
-        analysis_client = None
+    analysis_client = None
+    if not settings.analysis_service_base_url:
+        print("[TraceService] ADVERTENCIA: ANALYSIS_SERVICE_BASE_URL no está configurada. El análisis se omitirá.")
+    else:
+        try:
+            analysis_client = AnalysisServiceClient(
+                base_url=settings.analysis_service_base_url,
+                timeout=settings.analysis_service_timeout,
+            )
+            print(f"[TraceService] Cliente de análisis inicializado. URL base: {settings.analysis_service_base_url}")
+        except AnalysisServiceError as exc:
+            print(f"[TraceService] ERROR: No se pudo inicializar el cliente de análisis: {exc}")
+            analysis_client = None
 
     if analysis_client and image_bytes:
         try:
+            print(f"[TraceService] Enviando análisis a Analysis Service para práctica {practice_id}...")
             analysis_payload = await analysis_client.analyze_letter(
-                letter_char=letra.value,
+                letter_char=letra_enum.value,
                 image_bytes=image_bytes,
                 filename=imagen.filename,
                 content_type=imagen.content_type,
             )
+            print(f"[TraceService] Análisis recibido exitosamente para práctica {practice_id}")
+            
             analysis_dto = _build_analysis_request_dto(analysis_payload)
             update_uc = UpdatePracticeAnalysisUseCase(repo)
             update_uc.execute(practice_id=practice_id, analysis_data=analysis_dto)
+            print(f"[TraceService] Práctica {practice_id} actualizada con resultados del análisis")
         except AnalysisServiceError as exc:
-            print(f"[AnalysisService] Error de negocio: {exc}")
+            print(f"[TraceService] ERROR al comunicarse con Analysis Service: {exc}")
         except Exception as exc:  # noqa: BLE001
-            print(f"[AnalysisService] Error inesperado al actualizar análisis: {exc}")
+            print(f"[TraceService] ERROR inesperado al procesar análisis: {type(exc).__name__}: {exc}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"[TraceService] Análisis no ejecutado. Cliente disponible: {analysis_client is not None}, Imagen disponible: {len(image_bytes) > 0}")
 
     # Devolver el resultado actualizado (o pendiente si falló el análisis)
     result_uc = GetPracticeResultUseCase(repo)
-    return result_uc.execute(practice_id)
+    result = result_uc.execute(practice_id)
+    print(f"[TraceService] Devolviendo resultado para práctica {practice_id}")
+    return result
 
 @router.get("/history", response_model=List[PracticeHistoryDTO])
 def get_user_history(
@@ -185,3 +236,56 @@ def delete_practice(
     # Si todo está bien, procede a eliminar
     use_case = DeletePracticeUseCase(repo)
     use_case.execute(practice_id)
+
+
+# --- Endpoint de Debug (TEMPORAL - Eliminar en producción) ---
+@router.post("/debug", include_in_schema=False)
+async def debug_practice_request(
+    request: Request,
+    user_id: uuid.UUID = Depends(get_current_user_id)
+):
+    """Endpoint temporal para debuggear qué está llegando en la petición."""
+    try:
+        content_type = request.headers.get("content-type", "")
+        print(f"[DEBUG] Content-Type: {content_type}")
+        print(f"[DEBUG] Headers: {dict(request.headers)}")
+        
+        form_data = {}
+        files_received = {}
+        
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            print(f"[DEBUG] Form keys recibidos: {list(form.keys())}")
+            
+            for key, value in form.items():
+                if hasattr(value, 'filename') or isinstance(value, UploadFile):
+                    files_received[key] = {
+                        "filename": getattr(value, 'filename', 'N/A'),
+                        "content_type": getattr(value, 'content_type', 'N/A'),
+                        "size": len(await value.read()) if hasattr(value, 'read') else 0
+                    }
+                    if hasattr(value, 'file'):
+                        value.file.seek(0)
+                else:
+                    form_data[key] = value
+                    print(f"[DEBUG] Form field '{key}': {value}")
+        else:
+            body = await request.body()
+            print(f"[DEBUG] Body recibido (no multipart): {body[:200]}")
+        
+        return {
+            "content_type": content_type,
+            "form_fields": form_data,
+            "files_received": files_received,
+            "all_form_keys": list(form.keys()) if "multipart/form-data" in content_type else [],
+            "user_id": str(user_id),
+            "mensaje": "Endpoint de debug - revisa los logs del servidor para más detalles"
+        }
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"[DEBUG] ERROR: {error_detail}")
+        return {
+            "error": str(e),
+            "traceback": error_detail
+        }
